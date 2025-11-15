@@ -1,10 +1,14 @@
 """ This library concerns the data as observed """
 
 #
-import pandas
+import os
 import numpy as np
+import pandas as pd
 
+from tqdm import tqdm
+from functools import partial
 from .tools import speedutils
+from multiprocessing import Pool
 from .target.collection import TargetCollection
 
 __all__ = ["DataSet"]
@@ -22,7 +26,6 @@ def _process_target(
     gsurvey_indexed,
     field_names,
     phase_range,
-
 ):
 
     # get the target model, that will be used to generate the flux
@@ -33,8 +36,12 @@ def _process_target(
     this_target = targets_data_observed.loc[[index_target]]
     
     # logs associated to this target.
-    this_target_logs = pandas.concat([gsurvey_indexed.get_group(tuple(entry_))
-                                    for entry_ in this_target[field_names].values])
+    this_target_logs = pd.concat(
+        [
+            gsurvey_indexed.get_group(tuple(entry_))
+            for entry_ in this_target[field_names].values
+        ]
+    )
     
     # limit the logs to the given restframe phase range
     if phase_range is not None:
@@ -156,13 +163,97 @@ class DataSet(object):
         self.set_data(data)
         self.set_targets(targets)
         self.set_survey(survey)
+
+    def _process_targets_sequential(
+        target_indeces,
+        targets,
+        targets_data_observed,
+        gsurvey_indexed,
+        field_names,
+        phase_range,
+        verbose=True,
+        *args,
+        **kwargs,
+    ):
+        bandflux = []
+        for index_target in tqdm(
+            target_indeces,
+            desc = "Processing Observed Targets...",
+            total = len(target_indeces),
+            disable = not verbose
+        ):
+            used_logs = _process_target(
+                index_target=index_target,
+                targets=targets,
+                targets_data_observed=targets_data_observed,
+                gsurvey_indexed=gsurvey_indexed,
+                field_names=field_names,
+                phase_range=phase_range
+            )
+            bandflux.append(used_logs)
         
+        return bandflux
+    
+    def _process_targets_parallel(
+        target_indeces,
+        targets,
+        targets_data_observed,
+        gsurvey_indexed,
+        field_names,
+        phase_range,
+        n_jobs=None,
+        chunksize=None,
+        verbose=True,
+        *args,
+        **kwargs,
+    ):
+        
+        n_total = len(target_indeces)
+
+        if n_jobs is None:
+            n_jobs = os.cpu_count()
+
+        if chunksize is None:
+            chunksize = max(
+                0, n_total // (n_jobs * 128)
+            )
+        
+        partial_worker = partial(
+            _process_target,
+            targets=targets,
+            targets_data_observed=targets_data_observed,
+            gsurvey_indexed=gsurvey_indexed,
+            field_names=field_names,
+            phase_range=phase_range
+        )
+
+        with Pool(processes=n_jobs) as pool:
+            bandflux = list(
+                tqdm(
+                    pool.imap(
+                        partial_worker,
+                        target_indeces,
+                        chunksize=chunksize
+                    ),
+                    desc="Processing Observed Targets...",
+                    total=n_total,
+                    disable=not verbose
+                )
+            )
+
+        return bandflux
+
     @classmethod
-    def from_targets_and_survey(cls, targets, survey,
-                                       incl_error=True,
-                                       # client=None,
-                                       phase_range=[-50, +200],
-                                       seed=None):
+    def from_targets_and_survey(
+        cls, targets, survey,
+        incl_error = True,
+        phase_range = [-50, +200],
+        seed = None,
+        verbose = True,
+        use_mp = False,
+        n_jobs = None,
+        chunksize = None
+    ):
         """ loads a dataset (observed data) given targets and a survey
 
         This first matches the targets (given targets.data[["ra","dec"]]) with the
@@ -258,18 +349,27 @@ class DataSet(object):
         if phase_range is not None:
             phase_range = np.asarray(phase_range)
             
-        bandflux = []
         targets_observed = targets_data_observed.index.unique()
-        for index_target in targets_observed:
-            used_logs = _process_target(
-                index_target=index_target,
-                targets=targets,
-                targets_data_observed=targets_data_observed,
-                gsurvey_indexed=gsurvey_indexed,
-                field_names=field_names,
-                phase_range=phase_range
-            )
-            bandflux.append(used_logs)
+
+
+
+        if not use_mp:
+            process_fn = cls._process_targets_sequential
+        else:
+            process_fn = cls._process_targets_parallel
+        
+        bandflux = process_fn(
+            target_indeces=targets_observed,
+            targets=targets,
+            targets_data_observed=targets_data_observed,
+            gsurvey_indexed=gsurvey_indexed,
+            field_names=field_names,
+            phase_range=phase_range,
+            verbose=verbose,
+            n_jobs=n_jobs,
+            chunksize=chunksize
+        )
+
 
         # create a dataframe concatenating all lightcurves
         lcs = speedutils.eff_concat(bandflux, int(np.sqrt(len(targets_observed))),
@@ -312,7 +412,7 @@ class DataSet(object):
         --------
         from_targets_and_survey: loads a dataset (observed data) given targets and survey
         """
-        data = pandas.read_parquet(parquetfile, **kwargs)
+        data = pd.read_parquet(parquetfile, **kwargs)
         return cls(data, survey=survey, targets=targets)
 
     @classmethod
