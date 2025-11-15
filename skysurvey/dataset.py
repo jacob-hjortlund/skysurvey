@@ -15,6 +15,49 @@ __all__ = ["DataSet"]
 #                    #
 # ================== #
 
+def _process_target(
+    index_target,
+    targets,
+    targets_data_observed,
+    gsurvey_indexed,
+    field_names,
+    phase_range,
+
+):
+
+    # get the target model, that will be used to generate the flux
+    # this model is set to the target parameters.
+    model = targets.get_target_template(index=index_target, as_model=True)
+
+    # grab the target information (could be several rows)
+    this_target = targets_data_observed.loc[[index_target]]
+    
+    # logs associated to this target.
+    this_target_logs = pandas.concat([gsurvey_indexed.get_group(tuple(entry_))
+                                    for entry_ in this_target[field_names].values])
+    
+    # limit the logs to the given restframe phase range
+    if phase_range is not None:
+        # to limit per phase:
+        # 1. get the model t0 and redshift to get rest-frame phase
+        t0 = model.parameters[model.param_names.index("t0")]
+        redshift = model.parameters[model.param_names.index("z")]
+        # 2. create the mjd range to consider for this target.
+        this_mjd_range = t0 + phase_range*(1+redshift)
+        # 3. limit the logs to mjd matching this condition. 
+        used_logs = this_target_logs[ this_target_logs["mjd"].between(*this_mjd_range) ].copy()
+    else:
+        used_logs = this_target_logs.copy()
+
+    used_logs = used_logs.sort_values("mjd")
+    # realise the flux lightcurves and its error
+    used_logs["flux"] = model.bandflux(used_logs['band'], used_logs['mjd'],
+                                    zp=used_logs['zp'], zpsys="ab")
+    used_logs["fluxerr"] = np.sqrt(used_logs['skynoise']**2 + \
+                                    np.abs(used_logs["flux"]) / used_logs['gain'])
+
+    return used_logs
+
 class DataSet(object):
     """ A class for managing and realistic transient light curves given true data and survey observing logs.
 
@@ -218,37 +261,14 @@ class DataSet(object):
         bandflux = []
         targets_observed = targets_data_observed.index.unique()
         for index_target in targets_observed:
-            # get the target model, that will be used to generate the flux
-            # this model is set to the target parameters.
-            model = targets.get_target_template(index=index_target, as_model=True)
-
-            # grab the target information (could be several rows)
-            this_target = targets_data_observed.loc[[index_target]]
-            
-            # logs associated to this target.
-            this_target_logs = pandas.concat([gsurvey_indexed.get_group(tuple(entry_))
-                                              for entry_ in this_target[field_names].values])
-            
-            # limit the logs to the given restframe phase range
-            if phase_range is not None:
-                # to limit per phase:
-                # 1. get the model t0 and redshift to get rest-frame phase
-                t0 = model.parameters[model.param_names.index("t0")]
-                redshift = model.parameters[model.param_names.index("z")]
-                # 2. create the mjd range to consider for this target.
-                this_mjd_range = t0 + phase_range*(1+redshift)
-                # 3. limit the logs to mjd matching this condition. 
-                used_logs = this_target_logs[ this_target_logs["mjd"].between(*this_mjd_range) ].copy()
-            else:
-                used_logs = this_target_logs.copy()
-
-            used_logs = used_logs.sort_values("mjd")
-            # realise the flux lightcurves and its error
-            used_logs["flux"] = model.bandflux(used_logs['band'], used_logs['mjd'],
-                                               zp=used_logs['zp'], zpsys="ab")
-            used_logs["fluxerr"] = np.sqrt(used_logs['skynoise']**2 + \
-                                               np.abs(used_logs["flux"]) / used_logs['gain'])
-            # and store.
+            used_logs = _process_target(
+                index_target=index_target,
+                targets=targets,
+                targets_data_observed=targets_data_observed,
+                gsurvey_indexed=gsurvey_indexed,
+                field_names=field_names,
+                phase_range=phase_range
+            )
             bandflux.append(used_logs)
 
         # create a dataframe concatenating all lightcurves
