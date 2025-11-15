@@ -13,23 +13,50 @@ from .target.collection import TargetCollection
 
 __all__ = ["DataSet"]
 
+_TARGETS = None
+_TARGET_DATA = None
+_GSURVEY = None
+_FIELD_NAMES = None
+_PHASE_RANGE = None
+
 # ================== #
 #                    #
 #    DataSet         #
 #                    #
 # ================== #
 
-def _process_target(
-    index_target,
+def _init_targets(
     targets,
-    targets_data_observed,
-    gsurvey_indexed,
+    target_data,
+    gsurvey,
     field_names,
     phase_range,
+):
+    global _TARGETS, _TARGET_DATA, _GSURVEY, _FIELD_NAMES, _PHASE_RANGE
+    _TARGETS = targets
+    _TARGET_DATA = target_data
+    _GSURVEY = gsurvey
+    _FIELD_NAMES = field_names
+    _PHASE_RANGE = phase_range
+
+def _process_target(
+    index_target,
+    targets_data_observed=None,
+    gsurvey_indexed=None,
+    field_names=None,
+    phase_range=None,
+    targets=None,
+    using_mp=False
 ):
 
     # get the target model, that will be used to generate the flux
     # this model is set to the target parameters.
+    if using_mp:
+        targets_data_observed = _TARGET_DATA
+        gsurvey_indexed = _GSURVEY
+        field_names = _FIELD_NAMES
+        phase_range = _PHASE_RANGE
+        targets = _TARGETS
     model = targets.get_target_template(index=index_target, as_model=True)
 
     # grab the target information (could be several rows)
@@ -215,19 +242,25 @@ class DataSet(object):
 
         if chunksize is None:
             chunksize = max(
-                0, n_total // (n_jobs * 128)
+                1, n_total // (n_jobs * 128)
             )
         
         partial_worker = partial(
             _process_target,
-            targets=targets,
-            targets_data_observed=targets_data_observed,
-            gsurvey_indexed=gsurvey_indexed,
-            field_names=field_names,
-            phase_range=phase_range
+            using_mp=True
         )
 
-        with Pool(processes=n_jobs) as pool:
+        with Pool(
+            processes=n_jobs,
+            initializer=_init_targets,
+            initargs=(
+                targets,
+                targets_data_observed,
+                gsurvey_indexed,
+                field_names,
+                phase_range
+            )
+        ) as pool:
             bandflux = list(
                 tqdm(
                     pool.imap(
@@ -282,6 +315,17 @@ class DataSet(object):
             If an ``int``, it will be passed to `SeedSequence` to derive the initial `BitGenerator` state. 
             Additionally, when passed a `(Bit)Generator`, it will be returned unaltered.
             When passed a legacy `RandomState` instance it will be coerced to a `Generator`.
+        verbose: Bool, optional
+            Toggles tqdm progress bar for processing of observed targets. Defaults to True.
+        use_mp: Bool, optional
+            Toggles using multiprocessing for processing of observed targets. Defaults to True.
+        n_jobs: int, None, optional
+            Number of workers to use for multiprocessing. If None, the number of workers will be set
+            to the cpu count given by os.cpu_count(). Defaults to None.
+        chunksize: int, None, optional
+            Number of chunks to divide data into. If None, it defaults to 
+            max(1, n_total // (n_jobs * 128)), with n_total being the number of observed targets.
+            Defaults to None.
 
         Returns
         -------
