@@ -25,19 +25,19 @@ _PHASE_RANGE = None
 #                    #
 # ================== #
 
-# def _init_targets(
-#     targets,
-#     target_data,
-#     gsurvey,
-#     field_names,
-#     phase_range,
-# ):
-#     global _TARGETS, _TARGET_DATA, _GSURVEY, _FIELD_NAMES, _PHASE_RANGE
-#     _TARGETS = targets
-#     _TARGET_DATA = target_data
-#     _GSURVEY = gsurvey
-#     _FIELD_NAMES = field_names
-#     _PHASE_RANGE = phase_range
+def _init_targets(
+    targets,
+    target_data,
+    gsurvey,
+    field_names,
+    phase_range,
+):
+    global _TARGETS, _TARGET_DATA, _GSURVEY, _FIELD_NAMES, _PHASE_RANGE
+    _TARGETS = targets
+    _TARGET_DATA = target_data
+    _GSURVEY = gsurvey
+    _FIELD_NAMES = field_names
+    _PHASE_RANGE = phase_range
 
 def _process_target(
     index_target,
@@ -49,25 +49,31 @@ def _process_target(
     using_mp=False
 ):
 
-    # get the target model, that will be used to generate the flux
-    # this model is set to the target parameters.
     if using_mp:
+        # assign globals to locals
         targets_data_observed = _TARGET_DATA
         gsurvey_indexed = _GSURVEY
         field_names = _FIELD_NAMES
         phase_range = _PHASE_RANGE
         targets = _TARGETS
-    
+
+        # Use iloc for parallel - better memory access pattern
+        index_mask = targets_data_observed.index == index_target
+        this_target = targets_data_observed.iloc[index_mask]
+    else:
+        # Use loc for sequential - hash lookup is faster
+        this_target = targets_data_observed.loc[[index_target]]
+
+    # get the target model, that will be used to generate the flux
+    # this model is set to the target parameters.
     model = targets.get_target_template(index=index_target, as_model=True)
 
-    # grab the target information (could be several rows)
-    this_target = targets_data_observed.loc[[index_target]]
-    
     # logs associated to this target.
+    field_entries = this_target[field_names].values
     this_target_logs = pd.concat(
         [
             gsurvey_indexed.get_group(tuple(entry_))
-            for entry_ in this_target[field_names].values
+            for entry_ in field_entries
         ]
     )
     
@@ -236,13 +242,6 @@ class DataSet(object):
         **kwargs,
     ):
         
-        global _TARGETS, _TARGET_DATA, _GSURVEY, _FIELD_NAMES, _PHASE_RANGE
-        _TARGETS = targets
-        _TARGET_DATA = targets_data_observed
-        _GSURVEY = gsurvey_indexed
-        _FIELD_NAMES = field_names
-        _PHASE_RANGE = phase_range
-
         n_total = len(target_indeces)
 
         if n_jobs is None:
@@ -261,13 +260,21 @@ class DataSet(object):
 
         with Pool(
             processes=n_jobs,
+            initializer=_init_targets,
+            initargs=(
+                targets,
+                targets_data_observed,
+                gsurvey_indexed,
+                field_names,
+                phase_range
+            )
         ) as pool:
             bandflux = list(
                 tqdm(
                     pool.imap(
                         partial_worker,
                         target_indeces,
-                        chunksize=chunksize
+                        chunksize=chunksize,
                     ),
                     desc="Processing Observed Targets...",
                     total=n_total,
@@ -395,8 +402,6 @@ class DataSet(object):
             phase_range = np.asarray(phase_range)
             
         targets_observed = targets_data_observed.index.unique()
-
-
 
         if not use_mp:
             process_fn = cls._process_targets_sequential
