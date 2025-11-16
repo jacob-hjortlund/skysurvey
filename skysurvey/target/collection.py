@@ -3,6 +3,7 @@ import sncosmo
 import warnings
 import numpy as np
 
+from copy import deepcopy
 from ..template import Template
 from .timeserie import TSTransient
 from .core import Target, Transient
@@ -145,6 +146,7 @@ class TargetCollection( object ):
             warnings.warn(warning_string)
             target_template = Template.from_sncosmo(template_name)                
 
+        target_template = deepcopy(target_template)
         param_mask = np.isin(data_index.index, target_template.parameters)
         target_params = data_index[param_mask].to_dict()
         target_template.sncosmo_model.set(**target_params)
