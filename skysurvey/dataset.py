@@ -25,19 +25,19 @@ _PHASE_RANGE = None
 #                    #
 # ================== #
 
-def _init_targets(
-    targets,
-    target_data,
-    gsurvey,
-    field_names,
-    phase_range,
-):
-    global _TARGETS, _TARGET_DATA, _GSURVEY, _FIELD_NAMES, _PHASE_RANGE
-    _TARGETS = targets
-    _TARGET_DATA = target_data
-    _GSURVEY = gsurvey
-    _FIELD_NAMES = field_names
-    _PHASE_RANGE = phase_range
+# def _init_targets(
+#     targets,
+#     target_data,
+#     gsurvey,
+#     field_names,
+#     phase_range,
+# ):
+#     global _TARGETS, _TARGET_DATA, _GSURVEY, _FIELD_NAMES, _PHASE_RANGE
+#     _TARGETS = targets
+#     _TARGET_DATA = target_data
+#     _GSURVEY = gsurvey
+#     _FIELD_NAMES = field_names
+#     _PHASE_RANGE = phase_range
 
 def _process_target(
     index_target,
@@ -57,6 +57,7 @@ def _process_target(
         field_names = _FIELD_NAMES
         phase_range = _PHASE_RANGE
         targets = _TARGETS
+    
     model = targets.get_target_template(index=index_target, as_model=True)
 
     # grab the target information (could be several rows)
@@ -235,6 +236,13 @@ class DataSet(object):
         **kwargs,
     ):
         
+        global _TARGETS, _TARGET_DATA, _GSURVEY, _FIELD_NAMES, _PHASE_RANGE
+        _TARGETS = targets
+        _TARGET_DATA = targets_data_observed
+        _GSURVEY = gsurvey_indexed
+        _FIELD_NAMES = field_names
+        _PHASE_RANGE = phase_range
+
         n_total = len(target_indeces)
 
         if n_jobs is None:
@@ -245,6 +253,7 @@ class DataSet(object):
                 1, n_total // (n_jobs * 128)
             )
         
+        
         partial_worker = partial(
             _process_target,
             using_mp=True
@@ -252,14 +261,6 @@ class DataSet(object):
 
         with Pool(
             processes=n_jobs,
-            initializer=_init_targets,
-            initargs=(
-                targets,
-                targets_data_observed,
-                gsurvey_indexed,
-                field_names,
-                phase_range
-            )
         ) as pool:
             bandflux = list(
                 tqdm(
@@ -413,7 +414,6 @@ class DataSet(object):
             n_jobs=n_jobs,
             chunksize=chunksize
         )
-
 
         # create a dataframe concatenating all lightcurves
         lcs = speedutils.eff_concat(bandflux, int(np.sqrt(len(targets_observed))),
