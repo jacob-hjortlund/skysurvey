@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 
 from tqdm import tqdm
+from copy import deepcopy
 from functools import partial
 from .tools import speedutils
 from multiprocessing import Pool
@@ -25,23 +26,90 @@ _PHASE_RANGE = None
 #                    #
 # ================== #
 
+def _get_model_from_target(data, targets):
+    
+    if not isinstance(data, pd.Series):
+        data = data.iloc[0]
+    
+    if hasattr(targets.template, 'ntemplates'):
+        name = data['template']
+        index = targets.template.nameorindex_to_index(name)
+        template = targets.template.templates[index]
+    else:
+        template = targets.template
+    
+    template = deepcopy(template)
+    param_mask = np.isin(data.index, template.parameters)
+    params = data[param_mask].to_dict()
+    template.sncosmo_model.set(**params)
+    model = template.sncosmo_model
+
+    return model
+
+def _get_model_from_target_collection(data, targets):
+    
+    if not isinstance(data, pd.Series):
+        data = data.iloc[0]
+
+    template_name = data['template']
+    template_index = targets.template_names.index(template_name)
+    template = targets.targets[template_index].template
+    template = deepcopy(template)
+    param_mask = np.isin(data.index, template.parameters)
+    params = data[param_mask].to_dict()
+    template.sncosmo_model.set(**params)
+    model = template.sncosmo_model
+
+    return model
+
+
 def _init_targets(
     targets,
-    target_data,
+    #target_data,
     gsurvey,
     field_names,
     phase_range,
 ):
     global _TARGETS, _TARGET_DATA, _GSURVEY, _FIELD_NAMES, _PHASE_RANGE
     _TARGETS = targets
-    _TARGET_DATA = target_data
+    #_TARGET_DATA = target_data
     _GSURVEY = gsurvey
     _FIELD_NAMES = field_names
     _PHASE_RANGE = phase_range
 
+def _preprocess_survey_data(gsurvey_indexed, verbose=False):
+    """
+    Convert grouped survey DataFrame into a dictionary for better copy-on-write behavior.
+    
+    Parameters
+    ----------
+    gsurvey_indexed : DataFrameGroupBy
+        Grouped survey data
+    verbose : bool
+        Show progress bar
+        
+    Returns
+    -------
+    dict
+        Dictionary mapping field tuples to DataFrames
+    """
+    gsurvey_dict = {}
+
+    groups = gsurvey_indexed.groups.keys()
+    iterator = groups
+
+    for field_key in iterator:
+        # Get the group as a DataFrame
+        group_df = gsurvey_indexed.get_group(field_key)
+        # Store a copy to avoid references to the original grouped object
+        gsurvey_dict[field_key] = group_df.copy()
+
+    return gsurvey_dict
+
 def _process_target(
-    index_target,
-    targets_data_observed=None,
+    target_data,
+    #index_target,
+    #targets_data_observed=None,
     gsurvey_indexed=None,
     field_names=None,
     phase_range=None,
@@ -51,31 +119,49 @@ def _process_target(
 
     if using_mp:
         # assign globals to locals
-        targets_data_observed = _TARGET_DATA
+        #targets_data_observed = _TARGET_DATA
         gsurvey_indexed = _GSURVEY
         field_names = _FIELD_NAMES
         phase_range = _PHASE_RANGE
         targets = _TARGETS
+        gsurvey_lookup_fn = lambda key: gsurvey_indexed[key]
 
-        # Use iloc for parallel - better memory access pattern
-        index_mask = targets_data_observed.index == index_target
-        this_target = targets_data_observed.iloc[index_mask]
     else:
         # Use loc for sequential - hash lookup is faster
-        this_target = targets_data_observed.loc[[index_target]]
+        gsurvey_lookup_fn = lambda key: gsurvey_indexed.get_group(key)
 
-    # get the target model, that will be used to generate the flux
-    # this model is set to the target parameters.
-    model = targets.get_target_template(index=index_target, as_model=True)
+    if isinstance(targets, TargetCollection):
+        _get_model_fn = _get_model_from_target_collection
+    else:
+        _get_model_fn = _get_model_from_target
+
+    model = _get_model_fn(data=target_data, targets=targets)
+    # this_target = targets_data_observed.loc[[index_target]]
+    # # get the target model, that will be used to generate the flux
+    # # this model is set to the target parameters.
+    # model = targets.get_target_template(
+    #     index=index_target, as_model=True,
+    # )
 
     # logs associated to this target.
-    field_entries = this_target[field_names].values
-    this_target_logs = pd.concat(
-        [
-            gsurvey_indexed.get_group(tuple(entry_))
-            for entry_ in field_entries
-        ]
-    )
+    field_entries = target_data[field_names].values
+    logs_list = []
+    for field_entry in field_entries:
+        field_entry = tuple(field_entry)
+        logs_list.append(
+            gsurvey_lookup_fn(field_entry)
+        )
+        
+    if len(logs_list) == 1:
+        this_target_logs = logs_list[0]
+    else:
+        this_target_logs = pd.concat(logs_list, ignore_index=True, copy=False)
+    # this_target_logs = pd.concat(
+    #     [
+    #         gsurvey_indexed.get_group(tuple(entry_))
+    #         for entry_ in field_entries
+    #     ]
+    # )
     
     # limit the logs to the given restframe phase range
     if phase_range is not None:
@@ -199,27 +285,32 @@ class DataSet(object):
         self.set_survey(survey)
 
     def _process_targets_sequential(
-        target_indeces,
+        target_data_iterator,
+        #target_indeces,
         targets,
-        targets_data_observed,
+        #targets_data_observed,
         gsurvey_indexed,
         field_names,
         phase_range,
+        total_len,
         verbose=True,
         *args,
         **kwargs,
     ):
         bandflux = []
-        for index_target in tqdm(
-            target_indeces,
+        for target_data in tqdm(
+            #target_indices,
+            target_data_iterator,
             desc = "Processing Observed Targets...",
-            total = len(target_indeces),
+            #total = len(target_indeces),
+            total=total_len,
             disable = not verbose
         ):
             used_logs = _process_target(
-                index_target=index_target,
+                target_data=target_data,
+                #index_target=index_target,
                 targets=targets,
-                targets_data_observed=targets_data_observed,
+                #targets_data_observed=targets_data_observed,
                 gsurvey_indexed=gsurvey_indexed,
                 field_names=field_names,
                 phase_range=phase_range
@@ -229,12 +320,14 @@ class DataSet(object):
         return bandflux
     
     def _process_targets_parallel(
-        target_indeces,
+        target_data_iterator,
+        #target_indeces,
         targets,
-        targets_data_observed,
+        #targets_data_observed,
         gsurvey_indexed,
         field_names,
         phase_range,
+        total_len,
         n_jobs=None,
         chunksize=None,
         verbose=True,
@@ -242,14 +335,13 @@ class DataSet(object):
         **kwargs,
     ):
         
-        n_total = len(target_indeces)
-
+        # total_len = len(target_indeces)
         if n_jobs is None:
             n_jobs = os.cpu_count()
 
         if chunksize is None:
             chunksize = max(
-                1, n_total // (n_jobs * 128)
+                1, total_len // (n_jobs * 128)
             )
         
         
@@ -263,7 +355,7 @@ class DataSet(object):
             initializer=_init_targets,
             initargs=(
                 targets,
-                targets_data_observed,
+                #targets_data_observed,
                 gsurvey_indexed,
                 field_names,
                 phase_range
@@ -273,11 +365,12 @@ class DataSet(object):
                 tqdm(
                     pool.imap(
                         partial_worker,
-                        target_indeces,
+                        #target_indeces,
+                        target_data_iterator,
                         chunksize=chunksize,
                     ),
                     desc="Processing Observed Targets...",
-                    total=n_total,
+                    total=total_len,
                     disable=not verbose
                 )
             )
@@ -388,6 +481,10 @@ class DataSet(object):
 
         # List of observed targets
         targets_data_observed = targets_data[is_target_observed]
+        if use_mp:
+            gsurvey_indexed = _preprocess_survey_data(
+                gsurvey_indexed=gsurvey_indexed,
+            )
         
         # 
         # for lop on targets:
@@ -397,21 +494,28 @@ class DataSet(object):
         # pandas.DataFrame, using the faster `eff_concat` trick.
         #
         
-        # make sure phase_range is an array to multiple by (1+z)
+        # make sure phase_range is an array to multiple by (1+z)        
         if phase_range is not None:
             phase_range = np.asarray(phase_range)
             
         targets_observed = targets_data_observed.index.unique()
-
+        targets_observed_groupby = targets_data_observed.groupby(
+            targets_data_observed.index
+        )
+        groupby_iterator = [subdf.copy() for _, subdf in targets_observed_groupby]
+        total_len = len(targets_observed)
+        
         if not use_mp:
             process_fn = cls._process_targets_sequential
         else:
             process_fn = cls._process_targets_parallel
         
         bandflux = process_fn(
-            target_indeces=targets_observed,
+            #target_indeces=targets_observed,
+            target_data_iterator=groupby_iterator,
+            total_len=total_len,
             targets=targets,
-            targets_data_observed=targets_data_observed,
+            #targets_data_observed=targets_data_observed,
             gsurvey_indexed=gsurvey_indexed,
             field_names=field_names,
             phase_range=phase_range,
@@ -420,7 +524,6 @@ class DataSet(object):
             chunksize=chunksize
         )
 
-        # create a dataframe concatenating all lightcurves
         lcs = speedutils.eff_concat(bandflux, int(np.sqrt(len(targets_observed))),
                                     keys=targets_observed.values)
 
