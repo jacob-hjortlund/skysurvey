@@ -299,7 +299,7 @@ class Target( object ):
         
         return sncosmo_model
 
-    def get_target_template(self, index, as_model=False, **kwargs):
+    def get_target_template(self, index, as_model=False, using_mp=False, **kwargs):
         """Get a template set to the target parameters.
 
         This is a shortcut to `get_template(index=index, **kwargs)`.
@@ -457,8 +457,8 @@ class Target( object ):
         known = self.get_template_columns()
         prop = self.data[known]
         if index is not None:
-            return prop.loc[index]
-        
+            prop = prop.loc[index]
+
         return prop
 
     def get_template_columns(self):
@@ -630,7 +630,7 @@ class Target( object ):
                 templatename = "unknown"
             else:
                 templatename = self.template_source.name
-            data["template"] = templatename
+                data["template"] = templatename
 
         self._data = data
         
@@ -1050,7 +1050,6 @@ class Target( object ):
         if inplace:
             # lower precision
             data = data.astype( {k: str(v).replace("64","32") for k, v in data.dtypes.to_dict().items()})
-            self.set_data(data)
             # since this is inplace, let's update stored model kwargs
             self.update_model_parameter(**kwargs)
             
