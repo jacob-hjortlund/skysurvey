@@ -751,9 +751,9 @@ class DataSet(object):
         
         data = self.get_data(phase_range=phase_range, detection=True)
         if per_band:
-            groupby = [self._data_index, "band"]
+            groupby = [pd.Grouper(level=0), "band"]
         else:
-            groupby = self._data_index
+            groupby = pd.Grouper(level=0)
         
         ndetection = data.groupby(groupby).size()
         return ndetection

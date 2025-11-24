@@ -299,7 +299,7 @@ class Target( object ):
         
         return sncosmo_model
 
-    def get_target_template(self, index, as_model=False, using_mp=False, **kwargs):
+    def get_target_template(self, index, as_model=False, **kwargs):
         """Get a template set to the target parameters.
 
         This is a shortcut to `get_template(index=index, **kwargs)`.
