@@ -2,6 +2,7 @@
 
 #
 import os
+import sys
 import numpy as np
 import pandas as pd
 
@@ -371,7 +372,12 @@ class DataSet(object):
                     ),
                     desc="Processing Observed Targets...",
                     total=total_len,
-                    disable=not verbose
+                    disable=not verbose,
+                    mininterval=30.0,
+                    maxinterval=120.0,
+                    ascii=True,
+                    ncols=80,
+                    file=sys.stdout
                 )
             )
 
