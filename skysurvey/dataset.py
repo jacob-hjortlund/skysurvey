@@ -373,10 +373,10 @@ class DataSet(object):
                     desc="Processing Observed Targets...",
                     total=total_len,
                     disable=not verbose,
-                    mininterval=30.0,
-                    maxinterval=120.0,
+                    #mininterval=30.0,
+                    #maxinterval=120.0,
                     ascii=True,
-                    ncols=80,
+                    bar_format="{desc}: {percentage:3.0f}% | {n_fmt}/{total_fmt} | {rate_fmt} | {elapsed}<{remaining}",
                     file=sys.stdout
                 )
             )
