@@ -6,6 +6,7 @@ import sys
 import numpy as np
 import pandas as pd
 
+from time import time
 from tqdm import tqdm
 from copy import deepcopy
 from functools import partial
@@ -440,6 +441,7 @@ class DataSet(object):
             instance of a DataSet loaded from the given targets.
         """
 
+        t0 = time()
         # if input targets is a list, create a TemplateCollection
         if type(targets) in [list, tuple]:
             targets = TargetCollection(targets) 
@@ -511,6 +513,10 @@ class DataSet(object):
         groupby_iterator = [subdf.copy() for _, subdf in targets_observed_groupby]
         total_len = len(targets_observed)
         
+        time_pre_mp = (time() - t0) / 60
+        print(f"Time spent pre-multiproc. in DataSet creation: {time_pre_mp:.3f} mins.")
+        
+        t0 = time()
         if not use_mp:
             process_fn = cls._process_targets_sequential
         else:
@@ -529,9 +535,14 @@ class DataSet(object):
             n_jobs=n_jobs,
             chunksize=chunksize
         )
+        time_proc = (time() - t0) / 60
+        print(f"Time spent processing using seq / multiproc: {time_proc:.3f} mins")
 
+        t0 = time()
         lcs = speedutils.eff_concat(bandflux, int(np.sqrt(len(targets_observed))),
                                     keys=targets_observed.values)
+        time_concat = (time() - t0) / 60
+        print(f"Time spent concatenating: {time_concat:.3f} mins.")
 
         # if incl_error, the true flux is converted into an observed flux
         if incl_error:
