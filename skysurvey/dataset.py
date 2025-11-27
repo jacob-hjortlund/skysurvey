@@ -109,7 +109,7 @@ def _preprocess_survey_data(gsurvey_indexed, verbose=False):
     return gsurvey_dict
 
 def _process_target(
-    target_data,
+    target_data_input,
     #index_target,
     #targets_data_observed=None,
     gsurvey_indexed=None,
@@ -118,6 +118,9 @@ def _process_target(
     targets=None,
     using_mp=False
 ):
+
+    target_data_dict, target_index_val = target_data_input
+    target_data = pd.Series(target_data_dict)
 
     if using_mp:
         # assign globals to locals
@@ -146,7 +149,7 @@ def _process_target(
     # )
 
     # logs associated to this target.
-    field_entries = target_data[field_names].values
+    field_entries = np.atleast_2d(target_data[field_names].values)
     logs_list = []
     for field_entry in field_entries:
         field_entry = tuple(field_entry)
@@ -184,6 +187,8 @@ def _process_target(
                                     zp=used_logs['zp'], zpsys="ab")
     used_logs["fluxerr"] = np.sqrt(used_logs['skynoise']**2 + \
                                     np.abs(used_logs["flux"]) / used_logs['gain'])
+
+    used_logs["_temp_target_idx"] = target_index_val
 
     return used_logs
 
@@ -309,7 +314,7 @@ class DataSet(object):
             disable = not verbose
         ):
             used_logs = _process_target(
-                target_data=target_data,
+                target_data,
                 #index_target=index_target,
                 targets=targets,
                 #targets_data_observed=targets_data_observed,
@@ -507,10 +512,18 @@ class DataSet(object):
             phase_range = np.asarray(phase_range)
             
         targets_observed = targets_data_observed.index.unique()
-        targets_observed_groupby = targets_data_observed.groupby(
-            targets_data_observed.index
-        )
-        groupby_iterator = [subdf.copy() for _, subdf in targets_observed_groupby]
+        # targets_observed_groupby = targets_data_observed.groupby(
+        #     targets_data_observed.index
+        # )
+        # groupby_iterator = [subdf.copy() for _, subdf in targets_observed_groupby]
+        # total_len = len(targets_observed)
+
+        # Create an iterator of tuples: (row_data_as_dict, target_index)
+        # to_dict('records') is very fast (C-optimized) and lightweight compared to 1M DataFrames
+        iterator_data = targets_data_observed.to_dict("records")
+        groupby_iterator = zip(iterator_data, targets_observed.values)
+
+        # Update total_len for tqdm
         total_len = len(targets_observed)
         
         time_pre_mp = (time() - t0) / 60
@@ -539,8 +552,21 @@ class DataSet(object):
         print(f"Time spent processing using seq / multiproc: {time_proc:.3f} mins")
 
         t0 = time()
-        lcs = speedutils.eff_concat(bandflux, int(np.sqrt(len(targets_observed))),
-                                    keys=targets_observed.values)
+        #lcs = speedutils.eff_concat(bandflux, int(np.sqrt(len(targets_observed))),
+        #                            keys=targets_observed.values)
+
+        # Pass keys=None because the index is already inside the DataFrames (column "_temp_target_idx")
+        lcs = speedutils.eff_concat(
+            dfs=bandflux,
+            chunk_size=min(512, max(32, np.sqrt(total_len))),
+            keys=None
+        )
+
+        # Restore the MultiIndex structure efficiently
+        # We rely on the column added in the worker
+        if not lcs.empty:
+            lcs = lcs.set_index(["_temp_target_idx", lcs.index])
+            lcs.index.names = [targets.data.index.name or "index", "index_obs"] # Restore names
         time_concat = (time() - t0) / 60
         print(f"Time spent concatenating: {time_concat:.3f} mins.")
 
