@@ -119,8 +119,9 @@ def _process_target(
     using_mp=False
 ):
 
-    target_data_dict, target_index_val = target_data_input
-    target_data = pd.Series(target_data_dict)
+    #target_data_dict, target_index_val = target_data_input
+    #target_data = pd.Series(target_data_dict)
+    target_index_val, target_data = target_data_input
 
     if using_mp:
         # assign globals to locals
@@ -512,6 +513,7 @@ class DataSet(object):
             phase_range = np.asarray(phase_range)
             
         targets_observed = targets_data_observed.index.unique()
+        groupby_iterator = targets_data_observed.groupby(level=0)
         # targets_observed_groupby = targets_data_observed.groupby(
         #     targets_data_observed.index
         # )
@@ -520,8 +522,8 @@ class DataSet(object):
 
         # Create an iterator of tuples: (row_data_as_dict, target_index)
         # to_dict('records') is very fast (C-optimized) and lightweight compared to 1M DataFrames
-        iterator_data = targets_data_observed.to_dict("records")
-        groupby_iterator = zip(iterator_data, targets_observed.values)
+        # iterator_data = targets_data_observed.to_dict("records")
+        # groupby_iterator = zip(iterator_data, targets_observed.values)
 
         # Update total_len for tqdm
         total_len = len(targets_observed)
