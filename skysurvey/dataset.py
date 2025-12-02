@@ -40,7 +40,7 @@ def _get_model_from_target(data, targets):
     else:
         template = targets.template
     
-    template = deepcopy(template)
+    #template = deepcopy(template)
     param_mask = np.isin(data.index, template.parameters)
     params = data[param_mask].to_dict()
     template.sncosmo_model.set(**params)
@@ -56,7 +56,7 @@ def _get_model_from_target_collection(data, targets):
     template_name = data['template']
     template_index = targets.template_names.index(template_name)
     template = targets.targets[template_index].template
-    template = deepcopy(template)
+    #template = deepcopy(template)
     param_mask = np.isin(data.index, template.parameters)
     params = data[param_mask].to_dict()
     template.sncosmo_model.set(**params)
