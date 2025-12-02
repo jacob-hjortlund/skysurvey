@@ -393,7 +393,9 @@ class DataSet(object):
         verbose = True,
         use_mp = False,
         n_jobs = None,
-        chunksize = None
+        chunksize = None,
+        gsurvey_indexed = None,
+        fields_observed = None,
     ):
         """ loads a dataset (observed data) given targets and a survey
 
@@ -462,20 +464,18 @@ class DataSet(object):
         target_fields = np.stack(targets_data[survey.fieldids.names].values, dtype="int")
         #### IS THAT NECESSARY ? ####
         # =========== #
-        
-        survey_data = survey.data[ ["mjd", "band", "skynoise", "gain", "zp"] + survey.fieldids.names].copy()
-        if survey_data.index.name is None:
-            survey_data.index.name = "index_obs"
-        
-        field_names = survey.fieldids.names
-        gsurvey_indexed = survey_data.groupby(field_names, observed=True, group_keys = False)
 
-        # 
-        # check which fields have been observed
-        # to avoid looping over un-observed targets.
-        # 
-        nobs = gsurvey_indexed.size()
-        fields_observed = np.stack(nobs.index.values, dtype="int")
+        if gsurvey_indexed is None:
+            survey_data = survey.data[ ["mjd", "band", "skynoise", "gain", "zp"] + survey.fieldids.names].copy()
+            if survey_data.index.name is None:
+                survey_data.index.name = "index_obs"
+            
+            field_names = survey.fieldids.names
+            gsurvey_indexed = survey_data.groupby(field_names, observed=True, group_keys = False)
+
+
+            nobs = gsurvey_indexed.size()
+            fields_observed = np.stack(nobs.index.values, dtype="int")
 
         # build boolean mask to see which "target" could have data
         # given the "field" (all field_names) that have been observed.
@@ -489,10 +489,10 @@ class DataSet(object):
 
         # List of observed targets
         targets_data_observed = targets_data[is_target_observed]
-        if use_mp:
-            gsurvey_indexed = _preprocess_survey_data(
-                gsurvey_indexed=gsurvey_indexed,
-            )
+        # if use_mp:
+        #     gsurvey_indexed = _preprocess_survey_data(
+        #         gsurvey_indexed=gsurvey_indexed,
+        #     )
         
         # 
         # for lop on targets:
