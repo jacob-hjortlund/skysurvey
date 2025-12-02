@@ -465,12 +465,14 @@ class DataSet(object):
         #### IS THAT NECESSARY ? ####
         # =========== #
 
+        field_names = survey.fieldids.names
+
         if gsurvey_indexed is None:
             survey_data = survey.data[ ["mjd", "band", "skynoise", "gain", "zp"] + survey.fieldids.names].copy()
             if survey_data.index.name is None:
                 survey_data.index.name = "index_obs"
             
-            field_names = survey.fieldids.names
+            
             gsurvey_indexed = survey_data.groupby(field_names, observed=True, group_keys = False)
 
             nobs = gsurvey_indexed.size()
