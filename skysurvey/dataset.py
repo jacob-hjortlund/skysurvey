@@ -173,9 +173,9 @@ def _process_target(
         # 2. create the mjd range to consider for this target.
         this_mjd_range = t0 + phase_range*(1+redshift)
         # 3. limit the logs to mjd matching this condition. 
-        used_logs = this_target_logs[ this_target_logs["mjd"].between(*this_mjd_range) ].copy()
+        used_logs = this_target_logs[ this_target_logs["mjd"].between(*this_mjd_range) ]#.copy()
     else:
-        used_logs = this_target_logs.copy()
+        used_logs = this_target_logs#.copy()
 
     used_logs = used_logs.sort_values("mjd")
     # realise the flux lightcurves and its error
