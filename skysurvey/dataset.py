@@ -473,10 +473,13 @@ class DataSet(object):
             field_names = survey.fieldids.names
             gsurvey_indexed = survey_data.groupby(field_names, observed=True, group_keys = False)
 
-
             nobs = gsurvey_indexed.size()
             fields_observed = np.stack(nobs.index.values, dtype="int")
-
+            if use_mp:
+                gsurvey_indexed = _preprocess_survey_data(
+                    gsurvey_indexed=gsurvey_indexed,
+                )
+                
         # build boolean mask to see which "target" could have data
         # given the "field" (all field_names) that have been observed.
         if (nfields:=len(field_names)) == 2:
