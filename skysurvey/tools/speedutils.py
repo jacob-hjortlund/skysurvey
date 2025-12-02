@@ -26,16 +26,35 @@ def chunk_dfs(dfs, chunk_size):
         yield dfs_out, len(dfs_out)
 
 def concat_chunk(dfs, **kwargs):
-    """ """
-    return pandas.concat((df for df in dfs), **kwargs)
+    """ Helper to concatenate a chunk of DataFrames. """
+    # Optimization: Convert generator to list immediately so pandas.concat 
+    # can pre-allocate memory efficiently.
+    return pandas.concat(list(dfs), **kwargs)
 
 def eff_concat(dfs, chunk_size, keys=None, **kwargs):
-    """ """
-    dfs, dfs_len = itertools.tee(dfs, 2)
-    if len(list(dfs_len)) < chunk_size:
+    """ 
+    Memory-efficient concatenation by chunking.
+    Now handles keys=None and avoids itertools.tee for lists.
+    """
+    # Optimization: Avoid tee if input is already a list (which it is in dataset.py)
+    if hasattr(dfs, '__len__'):
+        total_len = len(dfs)
+    else:
+        dfs, dfs_len = itertools.tee(dfs, 2)
+        total_len = len(list(dfs_len))
+
+    # Fast path for small datasets
+    if total_len < chunk_size:
         return concat_chunk(dfs, keys=keys, **kwargs)
     
-    return pandas.concat( (concat_chunk(dfs, keys=keys[i*chunk_size:i*chunk_size+l], **kwargs)
-                            for i, (dfs, l) in enumerate( chunk_dfs(dfs, chunk_size))
-                          )
-                        )
+    # Logic to handle keys=None safely during chunking
+    return pandas.concat(
+        (
+            concat_chunk(
+                chunk, 
+                keys=None if keys is None else keys[i*chunk_size : i*chunk_size+l], 
+                **kwargs
+            )
+            for i, (chunk, l) in enumerate(chunk_dfs(dfs, chunk_size))
+        )
+    )
