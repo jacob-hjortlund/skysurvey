@@ -508,7 +508,7 @@ class DataSet(object):
         targets_observed_groupby = targets_data_observed.groupby(
             targets_data_observed.index
         )
-        groupby_iterator = [subdf.copy() for _, subdf in targets_observed_groupby]
+        groupby_iterator = [subdf for _, subdf in targets_observed_groupby]
         total_len = len(targets_observed)
         
         if not use_mp:
@@ -529,9 +529,12 @@ class DataSet(object):
             n_jobs=n_jobs,
             chunksize=chunksize
         )
-
-        lcs = speedutils.eff_concat(bandflux, int(np.sqrt(len(targets_observed))),
-                                    keys=targets_observed.values)
+        
+        lcs = speedutils.eff_concat(
+            bandflux,
+            chunk_size=min(512, max(32, int(np.sqrt(total_len)))),
+            keys=targets_observed.values
+        )
 
         # if incl_error, the true flux is converted into an observed flux
         if incl_error:
