@@ -47,7 +47,6 @@ def eff_concat(dfs, chunk_size, keys=None, **kwargs):
     if total_len < chunk_size:
         return concat_chunk(dfs, keys=keys, **kwargs)
     
-<<<<<<< HEAD
     # Logic to handle keys=None safely during chunking
     return pandas.concat(
         (
@@ -59,9 +58,3 @@ def eff_concat(dfs, chunk_size, keys=None, **kwargs):
             for i, (chunk, l) in enumerate(chunk_dfs(dfs, chunk_size))
         )
     )
-=======
-    return pandas.concat( (concat_chunk(dfs, keys=keys[i*chunk_size:i*chunk_size+step_], **kwargs)
-                            for i, (dfs, step_) in enumerate( chunk_dfs(dfs, chunk_size))
-                          )
-                        )
->>>>>>> fix/model_amplitude
