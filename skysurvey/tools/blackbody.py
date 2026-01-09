@@ -41,7 +41,7 @@ def get_blackbody_transient_source(phase, temperature, amplitude,
 
     """
     from sncosmo import TimeSeriesSource
-    if type(lbda) == str: # assumed r_ input
+    if type(lbda) is str: # assumed r_ input
         lbda = eval(f"np.r_[{lbda}]")
     
     fluxes = get_blackbody_transient_flux(lbda, temperature=temperature, amplitude=amplitude)
@@ -175,7 +175,7 @@ def blackbody_lambda(lbda, temperature, normed=True):
     return flux 
 
 def get_wein_lbdamax(temperature):
-    """ lambda max temperature
+    r""" lambda max temperature
     {\displaystyle \lambda _{m}={\frac {hc}{4.96511423174\,\mathrm {kT} }}}
     """
     if not hasattr(temperature, 'unit'): # assumed Angstrom

@@ -270,7 +270,7 @@ class HealpixSurvey( BaseSurvey ):
         if observed_fields:
             fieldid = self.data[self.fieldids.name].unique()
         else:
-            fieldid = ultrasat.fieldids
+            fieldid = self.fieldids
 
         corners = hp.boundaries(nside=self.nside, pix=fieldid)
         corners = np.moveaxis(corners,1,2)
@@ -435,7 +435,8 @@ class HealpixSurvey( BaseSurvey ):
     # ----------- #
     #  PLOTTER    #
     # ----------- #
-    def show(self, stat='size', column=None, title=None, data=None, vmin=None, vmax=None, **kwargs):
+    def show(self, stat='size', column=None, title=None, data=None, vmin=None,
+             vmax=None, seed=None, **kwargs):
         """ shows the sky coverage using ``healpy.mollview`` 
 
         Parameters
@@ -469,7 +470,8 @@ class HealpixSurvey( BaseSurvey ):
         """
         if data is None:
             if self.data is None:
-                data = np.random.uniform(size=self.nfields)
+                rng = np.random.default_rng(seed=seed) 
+                data = rng.uniform(size=self.nfields)
             else:
                 data = self.get_fieldstat(stat=stat, columns=column,
                                               incl_zeros=True, fillna=np.nan,

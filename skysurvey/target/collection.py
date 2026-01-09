@@ -1,5 +1,4 @@
 import pandas
-import sncosmo
 import warnings
 import numpy as np
 
@@ -28,7 +27,6 @@ def broadcast_mapping(value, ntargets):
     return broadcasted_values
 
 
-    
 class TargetCollection( object ):
     """A collection of targets.
 
@@ -105,8 +103,8 @@ class TargetCollection( object ):
     def get_target_template(
         self,
         index,
-        as_model = False,
-    ) -> Template | sncosmo.Model :
+        as_model,
+    ):
         """ Get the template for a given target.
 
         Parameters
@@ -132,24 +130,44 @@ class TargetCollection( object ):
         template_index = self.template_names.index(template_name)
         
         try:
-            target_template = self.targets[template_index].template
+            target = self.targets[template_index]
+            target_template = target.template
+            # TODO: Generalize. Currently not handling the edge case where we have a
+            # collection of targets with the same template but different peak
+            # magsys / rest-frame band.
+            peak_absmag_magsys = target.magsys
+            peak_absmag_band = target.peak_absmag_band
+            amplitude_name = target.amplitude_name
+            cosmology = target.cosmology
             
         except Exception as e:
             warning_string = (
                     f"Failed getting target template for index {index} with " +
                     f"name {template_name} and template index {template_index}. " +
-                    f"Exception on failure was: \n" +
+                     "Exception on failure was: \n" +
                     f"{e}\n" +
                     "Attempting to load template from SNCosmo registry. " +
                     "THIS WILL IGNORE ANY MODEL EFFECTS YOU HAVE SET!"
                 )
             warnings.warn(warning_string)
-            target_template = Template.from_sncosmo(template_name)                
+            target_template = Template.from_sncosmo(template_name)   
+            peak_absmag_magsys = "ab"
+            peak_absmag_band = "bessellb"   
+            amplitude_name = "amplitude"
+            cosmology = cosmology.Planck18
+
 
         target_template = deepcopy(target_template)
         param_mask = np.isin(data_index.index, target_template.parameters)
         target_params = data_index[param_mask].to_dict()
+        _ = target_params.pop(amplitude_name, None)
         target_template.sncosmo_model.set(**target_params)
+        target_template.sncosmo_model.set_source_peakabsmag(
+                absmag=data_index['magabs'],
+                band=peak_absmag_band,
+                magsys=peak_absmag_magsys,
+                cosmo=cosmology
+            )
         
         if as_model:
             output_template = target_template.sncosmo_model
@@ -255,6 +273,17 @@ class TargetCollection( object ):
         """The models of the targets in the collection."""
         return self.call_down("model")
 
+    # @property
+    # def magsys_targets(self):
+    #     if not hasattr(self, "_magsys"):
+    #         self._magsys = self.call_down("magsys")
+    #     return self._magsys
+    
+    # @property
+    # def peak_absmag_band(self):
+    #     if not hasattr(self, "_peak_absmag_band"):
+    #         self._peak_absmag_band = self.call_down("peak_absmag_band")
+    #     return self._peak_absmag_band
 
     @property
     def template(self):

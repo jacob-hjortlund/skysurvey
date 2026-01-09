@@ -1,7 +1,8 @@
-from astropy.cosmology import Planck15, z_at_value
+from astropy.cosmology import Planck15
+import pandas
 import healpy as hp
 import numpy as np
-from scipy.stats import norm, rv_discrete
+from scipy.stats import rv_discrete
 from scipy.interpolate import InterpolatedUnivariateSpline as Spline1d
 from shapely import geometry
 
@@ -44,12 +45,14 @@ def build_covariance(as_dataframe=False, **kwargs):
         see as_dataframe
 
     """
-    param_names, errors = np.stack([[l,v] for l,v in kwargs.items() if not l.startswith("cov")]).T
+    param_names, errors = np.stack([[key,val] for key, val in kwargs.items()
+                                        if not key.startswith("cov")]).T
     cov_diag = np.diag(np.asarray(errors, dtype="float")**2)
     # not sure I need this for loop though...
     for i, ikey in enumerate(param_names):
-        for j, jkey in enumerate(param_names):
-            if j==i: continue
+        for j, jkey in enumerate(param_names): 
+            if j==i:
+                continue 
             cov_diag[i,j] = kwargs.get(f"cov_{ikey}{jkey}", kwargs.get(f"cov_{jkey}{ikey}", 0))
     
     if as_dataframe:
@@ -58,7 +61,7 @@ def build_covariance(as_dataframe=False, **kwargs):
                                     columns=param_names)
     return cov_diag, param_names
 
-def apply_gaussian_noise(target_or_data, **kwargs):
+def apply_gaussian_noise(target_or_data, seed=None, **kwargs):
     """ apply random gaussian noise to the target
     
     pass the entries error and covariance as kwargs 
@@ -92,10 +95,11 @@ def apply_gaussian_noise(target_or_data, **kwargs):
     covmatrix, names = build_covariance(**kwargs)
 
     # create the noise
-    noise = np.random.multivariate_normal( np.zeros( len(names)),
-                                               covmatrix,
-                                               size=( len(target.data), )
-                                         )
+    rng = np.random.default_rng(seed=seed)
+    noise = rng.multivariate_normal( np.zeros( len(names)),
+                                    covmatrix,
+                                    size=( len(target.data), )
+                                    )
     
     # create the noisy data form
     datanoisy = data.copy()
@@ -244,8 +248,6 @@ def random_radecz_skymap(size=None,skymap={},
                         ]
                     ]
                 )
-    
-                map_struct["skymap"] = skymap
             else:
                 skymap = read_sky_map(filename, moc=True, distances=False)
 
@@ -273,11 +275,11 @@ def random_radecz_skymap(size=None,skymap={},
     ra_map = np.rad2deg(phi)
     dec_map = np.rad2deg(0.5*np.pi - theta)
 
-    if not ra_range is None:
+    if ra_range is not None:
         idx = np.where((ra_map < ra_range[0]) | (ra_map > ra_range[1]))[0]
         prob[idx] = 0.0
 
-    if not dec_range is None:
+    if dec_range is not  None:
         idx = np.where((dec_map < dec_range[0]) | (dec_map > dec_range[1]))[0]
         prob[idx] = 0.0
 

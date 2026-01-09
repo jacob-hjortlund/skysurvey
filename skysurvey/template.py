@@ -116,7 +116,7 @@ class Template( object ):
         -------
         instance
         """
-        if type(source) != sncosmo.Model:
+        if type(source) is not sncosmo.Model:
             sncosmo_model = get_sncosmo_model(source, **kwargs)
         else:
             sncosmo_model = source
@@ -418,9 +418,9 @@ class Template( object ):
             ax.set_xlabel("time [in day]", fontsize="large")
 
         if in_mag:
-            ax.set_ylabel(f"Magnitude", fontsize="large")
+            ax.set_ylabel("Magnitude", fontsize="large")
         elif zp is None:
-            ax.set_ylabel(f"Flux [erg/s/cm^2/A]", fontsize="large")
+            ax.set_ylabel("Flux [erg/s/cm^2/A]", fontsize="large")
         else:
             ax.set_ylabel(f"Flux [zp={zp}]", fontsize="large")
 
@@ -980,10 +980,11 @@ class TemplateCollection( object ):
             sncosmo_model = self.get(ref_index=index, as_model=True)
         elif index is not None:
             warnings.warn(f"{index=} is ignored as sncosmo_model is given.")
-
-        return self.templates[0].get_lightcurve(band, times, 
-                                                   sncosmo_model=sncosmo_model, 
-                                                   in_mag=in_mag, zp=zp, zpsys=zpsys,
+            index = 0
+            
+        return self.templates[index].get_lightcurve(band, times, 
+                                                    sncosmo_model=sncosmo_model, 
+                                                    in_mag=in_mag, zp=zp, zpsys=zpsys,
                                                     **kwargs)
             
     # ============ #

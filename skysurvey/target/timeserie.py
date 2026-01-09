@@ -1,5 +1,4 @@
 import numpy as np
-from scipy import stats
 from .core import Transient
 from ..tools.utils import random_radec
 __all__ = ["TSTransient"]
@@ -38,9 +37,6 @@ class TSTransient( Transient ):
                              "kwargs": {"z":"@z", "magabs": "@magabs"}
                             },
                                
-                   amplitude = {"func": "magobs_to_amplitude",
-                                "kwargs": {"magobs": "@magobs"}
-                            },
                    # This you need to match with the survey
                    radec = {"func": random_radec,
                             "as": ["ra","dec"]
@@ -48,12 +44,12 @@ class TSTransient( Transient ):
                  )
 
 
-    def __init__(self, source_or_template=None, magabs=None, *args, **kwargs):
+    def __init__(self, template=None, magabs=None, *args, **kwargs):
         """ loads a TimeSerie Transient 
 
         Parameters
         ----------
-        source_or_template: str, `sncosmo.Source`, `sncosmo.Model`, skysurvey.Template
+        template: str, `sncosmo.Source`, `sncosmo.Model`, skysurvey.Template
             the sncosmo TimeSeriesSource, you can provide:
             - str: the name, e.g. "v19-2013ge-corr"
             - sncosmo.Source: a loaded sncosmo.Source
@@ -66,8 +62,8 @@ class TSTransient( Transient ):
             - len(magabs)==3 => drawn from asymetric normal distribution: 
                 loc, scale_low, scale_high = magabs
         """
-        if source_or_template is not None:
-            self.set_template(source_or_template)
+        if template is not None:
+            self.set_template(template)
 
         super().__init__(*args, **kwargs)
         
@@ -86,7 +82,7 @@ class TSTransient( Transient ):
         return init_kwargs, kwargs
 
     @classmethod
-    def from_sncosmo(cls, source_or_template,
+    def from_sncosmo(cls, template,
                          rate=None,
                          model=None,
                          magabs=None, **kwargs):
@@ -95,7 +91,7 @@ class TSTransient( Transient ):
 
         Parameters
         ----------
-        source_or_template: str, `sncosmo.Source`, `sncosmo.Model`, skysurvey.Template
+        template: str, `sncosmo.Source`, `sncosmo.Model`, skysurvey.Template
             the sncosmo TimeSeriesSource, you can provide:
             - str: the name, e.g. "v19-2013ge-corr"
             - sncosmo.Source: a loaded sncosmo.Source
@@ -130,8 +126,8 @@ class TSTransient( Transient ):
         if rate is not None:
             this.set_rate(rate)
             
-        if source_or_template is not None:
-            this.set_template(source_or_template)
+        if template is not None:
+            this.set_template(template)
             
         if model is not None:
             this.update_model(**model) # will update any model entry.
@@ -240,22 +236,34 @@ class MultiTemplateTSTransient( TSTransient ):
 
         return draw_redshift(size=size, rate=rate, zmax=zmax, zmin=zmin, zstep=zstep, flatten_ndim=True, **kwargs)
 
-    def get_template(self, index=None, which="default", as_model=False, **kwargs):
+    def get_template(self, index=None, as_model=False, data=None, **kwargs):
         """ """
-        if index is None and which is None:
-            raise ValueError("either index of which must be given to know which template you are requesting")
-            
-        if index is not None:
-            prop = self.get_template_parameters(index).to_dict()
-            kwargs = prop | kwargs
-            if which is None or which == "default":
-                which = self.data["template"].loc[index]
 
-        if which == "default": # not been through index
-            which = 0
-            
+        if data is None:
+            data = self.data
+
+        if index is None:
+            index = 0
+
+        prop = self.get_template_parameters(index, data=data).to_dict()
+        kwargs = prop | kwargs
+        _ = kwargs.pop(self.amplitude_name, None)
+        which = data["template"].loc[index]
+
         templateindex = self.template.nameorindex_to_index(which)
         sncosmo_model = self.template.get(ref_index=templateindex, **kwargs)
+        
+        peak_absmag = data.loc[index, "magabs"]
+        peak_absmag_band = self.peak_absmag_band
+        peak_absmag_magsys = self.magsys
+
+        sncosmo_model.set_source_peakabsmag(
+            absmag=peak_absmag,
+            band=peak_absmag_band,
+            magsys=peak_absmag_magsys,
+            cosmo=self.cosmology
+        )
+
         if not as_model:
             from ..template import Template
             return Template.from_sncosmo(sncosmo_model)
