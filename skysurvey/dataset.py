@@ -46,6 +46,17 @@ def _get_model_from_target(data, targets):
     template.sncosmo_model.set(**params)
     model = template.sncosmo_model
 
+    peak_absmag = data.get('magabs')
+    peak_absmag_band = targets.peak_absmag_band
+    peak_absmag_magsys = targets.magsys
+    cosmo = targets.cosmology
+    model.set_source_peakabsmag(
+        absmag=peak_absmag,
+        band=peak_absmag_band,
+        magsys=peak_absmag_magsys,
+        cosmo=cosmo
+    )
+
     return model
 
 def _get_model_from_target_collection(data, targets):
